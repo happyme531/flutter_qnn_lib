@@ -1,0 +1,17 @@
+name: ImageLoaderBindings # 使用不同的名称
+description: |
+  FFI bindings for image_loader API library.
+  Regenerate bindings with `dart run ffigen --config ffigen.yaml`.
+output: 'lib/image_loader_bindings_generated.dart' # 指定不同的输出文件
+headers:
+  entry-points:
+    - 'csrc/image_loader.h'
+  include-directives:
+    - 'csrc/image_loader.h'
+preamble: |
+  // ignore_for_file: always_specify_types
+  // ignore_for_file: camel_case_types
+  // ignore_for_file: non_constant_identifier_names
+comments:
+  style: any
+  length: full

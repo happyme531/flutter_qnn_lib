@@ -1,0 +1,92 @@
+// The Android Gradle Plugin builds the native code with the Android NDK.
+
+group = "com.hallo1.flutter_qnn_lib"
+version = "1.0"
+
+buildscript {
+    ext.kotlin_version = '1.7.10'
+    repositories {
+        google()
+        mavenCentral()
+    }
+
+    dependencies {
+        // The Android Gradle Plugin knows how to build native code with the NDK.
+        classpath("com.android.tools.build:gradle:8.7.0")
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+    }
+}
+
+rootProject.allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+apply plugin: "com.android.library"
+apply plugin: 'kotlin-android'
+
+android {
+    namespace = "com.hallo1.flutter_qnn_lib"
+
+    // Bumping the plugin compileSdk version requires all clients of this plugin
+    // to bump the version in their app.
+    compileSdk = 35
+
+    // 使用特定的NDK版本
+    ndkVersion = "27.0.12077973"
+
+    // Invoke the shared CMake build with the Android Gradle Plugin.
+    externalNativeBuild {
+        cmake {
+            path = "../src/CMakeLists.txt"
+            // The default CMake version for the Android Gradle Plugin is 3.10.2.
+            // https://developer.android.com/studio/projects/install-ndk#vanilla_cmake
+            //
+            // The Flutter tooling requires that developers have CMake 3.10 or later
+            // installed. You should not increase this version, as doing so will cause
+            // the plugin to fail to compile for some customers of the plugin.
+            // version "3.10.2"
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
+    }
+
+    kotlinOptions {
+        jvmTarget = '11'
+    }
+
+    defaultConfig {
+        minSdk = 21
+        
+        // 在这里指定需要的ABI架构
+        ndk {
+            abiFilters 'arm64-v8a'
+        }
+        
+        // 使用c++_shared共享运行时库，自动将libc++_shared.so打包到APK中
+        externalNativeBuild {
+            cmake {
+                arguments "-DANDROID_STL=c++_shared"//, "-DANDROID_SANITIZE=hwaddress"
+            }
+        }
+    }
+    
+    // 配置SO文件的打包选项
+    sourceSets {
+        main {
+            // 包含jniLibs目录下的所有SO文件
+            jniLibs.srcDirs = ['src/main/jniLibs']
+            java.srcDirs += 'src/main/kotlin'
+        }
+    }
+}
+
+dependencies {
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
+    implementation 'androidx.annotation:annotation:1.5.0'
+}
