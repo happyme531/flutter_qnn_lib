@@ -134,7 +134,9 @@ class _HomePageState extends State<HomePage> {
           padding: EdgeInsets.zero,
           children: [
             DrawerHeader(
-              decoration: BoxDecoration(color: Colors.blue),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primary,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -245,11 +247,14 @@ class _HomePageState extends State<HomePage> {
     required VoidCallback onTap,
   }) {
     return ListTile(
-      leading: Icon(icon, color: isSelected ? Colors.blue : null),
+      leading: Icon(
+        icon,
+        color: isSelected ? Theme.of(context).colorScheme.primary : null,
+      ),
       title: Text(
         title,
         style: TextStyle(
-          color: isSelected ? Colors.blue : null,
+          color: isSelected ? Theme.of(context).colorScheme.primary : null,
           fontWeight: isSelected ? FontWeight.bold : null,
         ),
       ),
