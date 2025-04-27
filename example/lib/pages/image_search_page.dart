@@ -6,6 +6,8 @@ import 'package:path/path.dart' as p; // For path manipulation
 import 'package:open_file/open_file.dart'; // <-- Add for opening files
 import 'package:path_provider/path_provider.dart'; // <-- Add for temp dir
 import 'package:flutter/services.dart'; // <-- Add for rootBundle
+import 'package:share_plus/share_plus.dart'; // <-- Add share_plus import
+import 'package:super_drag_and_drop/super_drag_and_drop.dart'; // <-- Import super_drag_and_drop
 
 // Import necessary services and widgets
 import '../model_manager.dart';
@@ -354,6 +356,135 @@ class _ImageSearchPageState extends State<ImageSearchPage> {
     }
   }
 
+  // <-- Add helper function: _shareImage -->
+  Future<void> _shareImage(String assetId, BuildContext context) async {
+    // Find the RenderBox of the widget to provide a share position hint (optional but good practice)
+    final box = context.findRenderObject() as RenderBox?;
+    Rect? sharePositionOrigin;
+    if (box != null) {
+      sharePositionOrigin = box.localToGlobal(Offset.zero) & box.size;
+    }
+
+    // Show loading indicator while getting the file
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final asset = await AssetEntity.fromId(assetId);
+      if (asset == null) {
+        if (mounted) Navigator.of(context).pop(); // Dismiss loading
+        _showSnackBar('无法找到图像详情。');
+        return;
+      }
+
+      final file = await asset.file; // Get the original file
+      if (file == null) {
+        if (mounted) Navigator.of(context).pop(); // Dismiss loading
+        _showSnackBar('无法获取图像文件路径。');
+        return;
+      }
+
+      if (mounted) Navigator.of(context).pop(); // Dismiss loading
+
+      // Use share_plus to share the file
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        text: '分享图片', // Optional text
+        sharePositionOrigin: sharePositionOrigin,
+      );
+    } catch (e) {
+      if (mounted) Navigator.of(context).pop(); // Dismiss loading on error
+      print('Error sharing image: $e');
+      _showSnackBar('分享图像时出错: $e');
+    }
+  }
+
+  // <-- Add helper function: _showImageActions -->
+  void _showImageActions(String assetId, BuildContext builderContext) {
+    showModalBottomSheet(
+      context: context, // Use the main page context
+      builder: (BuildContext bottomSheetContext) {
+        return SafeArea(
+          child: Wrap(
+            children: <Widget>[
+              ListTile(
+                leading: const Icon(Icons.share),
+                title: const Text('分享'),
+                onTap: () {
+                  Navigator.of(bottomSheetContext).pop(); // Close bottom sheet
+                  _shareImage(assetId, builderContext);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.open_in_new),
+                title: const Text('用其他应用打开'),
+                onTap: () {
+                  Navigator.of(bottomSheetContext).pop(); // Close bottom sheet
+                  _openImageWithExternalApp(assetId);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.cancel),
+                title: const Text('取消'),
+                onTap: () {
+                  Navigator.of(bottomSheetContext).pop(); // Close bottom sheet
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // <-- Modify DragItemProvider function -->
+  Future<DragItem?> _provideImageDragItem(
+    DragItemRequest request,
+    String assetId, // Pass assetId needed for this specific item
+  ) async {
+    print('_provideImageDragItem started for assetId: $assetId');
+
+    try {
+      // Get the AssetEntity
+      final asset = await AssetEntity.fromId(assetId);
+      if (asset == null) {
+        print('Could not find AssetEntity for assetId: $assetId');
+        return null;
+      }
+
+      // **** 使用 asset.getMediaUrl() 获取 content:// URI ****
+      // 这个方法在 Android Q+ 返回 content:// URI，旧版本返回 file:// URI (系统会处理)
+      final mediaUrl = await asset.getMediaUrl();
+
+      if (mediaUrl == null) {
+        print('Could not get media URL (content:// URI) for assetId: $assetId');
+        return null; // Can't create DragItem without a valid URI
+      }
+
+      // **** 将获取到的 URL 字符串解析为 Uri 对象 ****
+      final uri = Uri.parse(mediaUrl);
+      print('Creating DragItem with Media URL (URI): $uri');
+
+      // Create the DragItem
+      final item = DragItem(
+        localData: {'assetId': assetId},
+        // suggestedName 仍然可以使用文件名，如果需要的话可以从 asset 获取
+        suggestedName: asset.title ?? 'shared_image', // 使用 asset 的标题或默认名
+      );
+
+      // Add the data representation - the content:// or file:// URI
+      item.add(Formats.fileUri(uri)); // 使用从 getMediaUrl 获取的 URI
+
+      return item;
+    } catch (e, stackTrace) {
+      print('Error in _provideImageDragItem for $assetId: $e\n$stackTrace');
+      return null; // Return null on error
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // Calculate preferred size for the search bar section in SliverAppBar
@@ -522,10 +653,10 @@ class _ImageSearchPageState extends State<ImageSearchPage> {
               padding: const EdgeInsets.all(4.0),
               sliver: SliverGrid(
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 3,
+                  crossAxisCount: 3, // Adjust as needed
                   crossAxisSpacing: 4.0,
                   mainAxisSpacing: 4.0,
-                  childAspectRatio: 0.75,
+                  childAspectRatio: 1.0, // Keep square for images
                 ),
                 delegate: SliverChildBuilderDelegate((context, index) {
                   final result = _searchResults[index];
@@ -535,70 +666,136 @@ class _ImageSearchPageState extends State<ImageSearchPage> {
                   return FutureBuilder<Uint8List?>(
                     future: _loadThumbnail(assetId),
                     builder: (context, snapshot) {
+                      Widget imageContent;
+                      Uint8List? thumbnailData = snapshot.data; // Store data
+
                       if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const Card(
-                          child: Center(
-                            child: CircularProgressIndicator(strokeWidth: 2),
+                        imageContent = const Center(
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        );
+                      } else if (!snapshot.hasData || thumbnailData == null) {
+                        imageContent = Center(
+                          child: Icon(
+                            Icons.broken_image,
+                            color: Colors.grey[400],
                           ),
                         );
-                      }
-                      if (!snapshot.hasData || snapshot.data == null) {
-                        return Card(
-                          child: Center(
-                            child: Icon(
-                              Icons.broken_image,
-                              color: Colors.grey[400],
+                      } else {
+                        // Build the content stack ONLY when data is available
+                        imageContent = Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            // Main Image
+                            Image.memory(thumbnailData, fit: BoxFit.contain),
+
+                            // Similarity Score Overlay
+                            Positioned(
+                              bottom: 4,
+                              left: 4,
+                              right: 4,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 4,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withOpacity(0.6),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  '分数: ${similarity.toStringAsFixed(3)}',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
                             ),
-                          ),
+
+                            // More Actions Icon Button
+                            Positioned(
+                              top: 0,
+                              right: 0,
+                              child: Builder(
+                                // Use Builder to get context for RenderBox
+                                builder: (buttonContext) {
+                                  return IconButton(
+                                    icon: const Icon(Icons.more_vert),
+                                    color: Colors.white.withOpacity(0.85),
+                                    iconSize: 20,
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                    tooltip: '更多操作',
+                                    // Use buttonContext to get correct position for share sheet
+                                    onPressed:
+                                        () => _showImageActions(
+                                          assetId,
+                                          buttonContext,
+                                        ),
+                                    style: ButtonStyle(
+                                      backgroundColor:
+                                          MaterialStateProperty.all(
+                                            Colors.black.withOpacity(0.3),
+                                          ),
+                                      shape: MaterialStateProperty.all(
+                                        const CircleBorder(),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
                         );
                       }
 
-                      return Card(
+                      // The base widget structure (Card with InkWell)
+                      final cardChild = Card(
                         clipBehavior: Clip.antiAlias,
+                        elevation: 2.0, // Optional: Adjust elevation
+                        margin: EdgeInsets.zero, // Let Padding handle spacing
                         child: InkWell(
                           onTap: () => _openImageWithExternalApp(assetId),
-                          child: Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              Image.memory(snapshot.data!, fit: BoxFit.cover),
-                              Positioned(
-                                bottom: 4,
-                                left: 4,
-                                right: 4,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 4,
-                                    vertical: 2,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.black.withOpacity(0.6),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: Text(
-                                    '分数: ${similarity.toStringAsFixed(3)}',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 10,
-                                    ),
-                                    textAlign: TextAlign.center,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ),
-                              Positioned(
-                                top: 4,
-                                right: 4,
-                                child: Icon(
-                                  Icons.open_in_new,
-                                  size: 16,
-                                  color: Colors.white.withOpacity(0.7),
-                                ),
-                              ),
-                            ],
-                          ),
+                          child: imageContent, // Place the built content here
                         ),
                       );
+
+                      // Only make it draggable if we have image data
+                      if (thumbnailData != null) {
+                        // Wrap with DragItemWidget for system DnD
+                        return DragItemWidget(
+                          dragItemProvider: (request) {
+                            // **** 确认日志仍然存在 ****
+                            print(
+                              'DragItemWidget: dragItemProvider invoked for assetId: $assetId',
+                            );
+                            // **** 调用修改后的 provider ****
+                            return _provideImageDragItem(request, assetId);
+                          },
+                          allowedOperations: () => [DropOperation.copy],
+                          canAddItemToExistingSession: true,
+                          liftBuilder: (context, child) {
+                            return SizedBox(
+                              width: 100,
+                              height: 100,
+                              child: Card(
+                                elevation: 6.0,
+                                child: Image.memory(
+                                  thumbnailData,
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                            );
+                          },
+                          child: DraggableWidget(child: cardChild),
+                        );
+                      } else {
+                        // If no image data (loading/error), return the non-draggable card
+                        return cardChild; // Still show the loading/error state
+                      }
                     },
                   );
                 }, childCount: _searchResults.length),

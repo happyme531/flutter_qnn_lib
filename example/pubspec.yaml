@@ -53,18 +53,20 @@ dependencies:
   cupertino_icons: ^1.0.8
   image: ^4.5.3
   opencv_core: ^1.4.1
-  file_picker: ^9.2.1
+  file_picker: ^10.1.2
   shared_preferences: ^2.5.2
   sqflite: ^2.4.2
   path: ^1.9.1
   photo_manager: ^3.6.4
-  permission_handler: ^11.4.0
-  app_settings: ^5.2.0
+  permission_handler: ^12.0.0+1
+  app_settings: ^6.1.1
   open_file: ^3.5.10
   package_info_plus: ^8.0.0
+  share_plus: ^11.0.0
+  super_drag_and_drop: ^0.8.24
   
 dev_dependencies:
-  ffigen: ^13.0.0
+  ffigen: ^18.1.0
   flutter_test:
     sdk: flutter
 
